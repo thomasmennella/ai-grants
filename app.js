@@ -31,7 +31,9 @@ const S = {
   loaded: false, leaveHook: null, fundSort: 'mean', scoreSort: 'mean'
 };
 
-const isDemo = () => /[?&]demo\b/.test(location.search);
+const demoAllowed = () => CFG.ALLOW_DEMO !== false;
+const isDemo = () => demoAllowed() && /[?&]demo\b/.test(location.search);
+const MGMT_KEY = isDemo() ? 'aigp-mgmt-demo' : 'aigp-mgmt';
 const configured = () => !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase);
 const isAdmin = () => !!(S.me && S.me.role === 'admin');
 const colleges = () => (Array.isArray(S.settings.colleges) && S.settings.colleges.length) ? S.settings.colleges : DEFAULT_COLLEGES;
@@ -210,12 +212,12 @@ function topbar() {
     ${S.demo ? '<span class="demo-flag" title="Sample data stored only in this browser">Demo</span>' : ''}
     ${signedIn ? `<div class="userchip"><span class="who">${esc(S.me.display_name || S.me.email)}${isAdmin() ? ' · Coordinator' : ''}</span>
       <button class="btn sm" data-top="pw">Password</button><button class="btn sm" data-top="out">Sign out</button></div>` : ''}
-    ${parts[0] === 'manage' && ss.get('aigp-mgmt') === '1' ? '<button class="btn sm" data-top="lock">Lock</button>' : ''}`;
+    ${parts[0] === 'manage' && ss.get(MGMT_KEY) === '1' ? '<button class="btn sm" data-top="lock">Lock</button>' : ''}`;
   $('#topbar').onclick = async e => {
     const b = e.target.closest('[data-top]'); if (!b) return;
     if (b.dataset.top === 'out') { await S.api.signOut(); S.me = null; S.loaded = false; go(''); }
     if (b.dataset.top === 'pw') changeOwnPassword();
-    if (b.dataset.top === 'lock') { ss.del('aigp-mgmt'); go(''); }
+    if (b.dataset.top === 'lock') { ss.del(MGMT_KEY); go(''); }
   };
 }
 
@@ -277,7 +279,7 @@ function viewLanding() {
       <div class="notice">${!window.PORTAL_CONFIG ? '<strong>config.js did not load.</strong> It is missing from the same folder as index.html, misnamed, or has a typo (a missing quote or comma).'
         : !(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY) ? 'The review platform is not connected yet: <code>SUPABASE_URL</code> and/or <code>SUPABASE_ANON_KEY</code> are blank in <code>config.js</code>.'
         : '<strong>The Supabase library could not be loaded</strong> (cdn.jsdelivr.net may be blocked on this network). Try another network or browser.'}</div>
-      <a class="btn gold" href="?demo#/">Explore the demo</a>`
+      ${demoAllowed() ? '<a class="btn gold" href="?demo#/">Explore the demo</a>' : ''}`
     : S.me ? `
       <p>Signed in as <strong>${esc(S.me.display_name || S.me.email)}</strong>.</p>
       <div class="row"><a class="btn primary" href="#/review">Continue to reviews →</a><button class="btn ghost" data-act="signout">Sign out</button></div>`
@@ -291,7 +293,7 @@ function viewLanding() {
           <button type="button" class="btn sm" data-demo="business@demo">Reviewer (Business)</button>
           <button type="button" class="btn sm" data-demo="pharmacy@demo">Reviewer (Pharmacy)</button></div></div>` : ''}
       </form>`;
-  const unlocked = ss.get('aigp-mgmt') === '1';
+  const unlocked = ss.get(MGMT_KEY) === '1';
   app.innerHTML = `<div class="wrap">
     <section class="hero">
       <div class="eyebrow">${esc(CFG.INSTITUTION || '')}</div>
@@ -339,7 +341,7 @@ function viewLanding() {
   if (mf) mf.onsubmit = async e => {
     e.preventDefault(); $('#merr').textContent = '';
     try {
-      if (await S.api.checkMgmtPassword($('#mpw').value)) { ss.set('aigp-mgmt', '1'); go('manage'); }
+      if (await S.api.checkMgmtPassword($('#mpw').value)) { ss.set(MGMT_KEY, '1'); go('manage'); }
       else $('#merr').textContent = 'Incorrect password.';
     } catch (err) { $('#merr').textContent = err.message; }
   };
@@ -348,7 +350,7 @@ function viewLanding() {
     if (d) { $('#lemail').value = d.dataset.demo; $('#lpw').value = 'demo'; lf.requestSubmit(); }
     const a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'signout') { await S.api.signOut(); S.me = null; S.loaded = false; render(); }
-    if (a.dataset.act === 'resetdemo') { S.api.reset(); S.me = null; S.loaded = false; ss.del('aigp-mgmt'); toast('Demo data reset'); render(); }
+    if (a.dataset.act === 'resetdemo') { S.api.reset(); S.me = null; S.loaded = false; ss.del(MGMT_KEY); toast('Demo data reset'); render(); }
   };
   app.onchange = app.oninput = null;
 }
@@ -357,7 +359,7 @@ function viewLanding() {
 // Grants Management (placeholder)
 // ====================================================================
 function viewManage() {
-  if (ss.get('aigp-mgmt') !== '1') return go('');
+  if (ss.get(MGMT_KEY) !== '1') return go('');
   const mods = [
     ['Awardee roster', 'Funded projects, leads and co-leads, tier, college, and award amount, carried over from the review platform.'],
     ['Conditions of award', 'Per-awardee checklist: AI training series, pre/post assessment, Lightning Talks, Community of Practice, AI Ambassador.'],
