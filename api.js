@@ -40,10 +40,11 @@
       const res = await this.sb.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (res.error) {
         if (/confirm/i.test(res.error.message)) throw new Error('This account has not been confirmed. Ask the coordinator to check the Supabase "Confirm email" setting.');
-        throw new Error('Email or password is incorrect.');
+        if (/invalid login credentials/i.test(res.error.message)) throw new Error('Email or password is incorrect.');
+        throw new Error('Sign-in failed: ' + res.error.message);
       }
       const prof = await this._loadProfile(res.data.user.id);
-      if (!prof) { await this.sb.auth.signOut(); throw new Error('This account does not have access to the review platform.'); }
+      if (!prof) { await this.sb.auth.signOut(); throw new Error('Password accepted, but this account has no portal profile yet. Run make-me-admin.sql (coordinator) or add the person on the Reviewers tab.'); }
       return prof;
     }
     async signOut() { await this.sb.auth.signOut(); }

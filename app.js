@@ -5,6 +5,8 @@
 // Basics
 // ====================================================================
 const CFG = window.PORTAL_CONFIG || {};
+if (CFG.SUPABASE_URL) CFG.SUPABASE_URL = String(CFG.SUPABASE_URL).trim().replace(/\/(rest|auth|storage)\/v1\/?.*$/, '').replace(/\/+$/, '');
+if (CFG.SUPABASE_ANON_KEY) CFG.SUPABASE_ANON_KEY = String(CFG.SUPABASE_ANON_KEY).replace(/\s+/g, '');
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 const app = $('#app');
@@ -272,7 +274,9 @@ async function refresh() { S.loaded = false; await render(); toast('Refreshed');
 // ====================================================================
 function viewLanding() {
   const reviewCard = !S.api ? `
-      <div class="notice">The review platform is not connected to its database yet. Follow the setup guide to add your Supabase keys to <code>config.js</code>.</div>
+      <div class="notice">${!window.PORTAL_CONFIG ? '<strong>config.js did not load.</strong> It is missing from the same folder as index.html, misnamed, or has a typo (a missing quote or comma).'
+        : !(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY) ? 'The review platform is not connected yet: <code>SUPABASE_URL</code> and/or <code>SUPABASE_ANON_KEY</code> are blank in <code>config.js</code>.'
+        : '<strong>The Supabase library could not be loaded</strong> (cdn.jsdelivr.net may be blocked on this network). Try another network or browser.'}</div>
       <a class="btn gold" href="?demo#/">Explore the demo</a>`
     : S.me ? `
       <p>Signed in as <strong>${esc(S.me.display_name || S.me.email)}</strong>.</p>
