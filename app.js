@@ -202,7 +202,7 @@ const pa = pid => S.padmin[pid] || { proposal_id: pid, college: '', requested: 0
 function topbar() {
   const parts = parse();
   const area = parts[0] === 'manage' ? 'Grants Management' : parts[0] === 'review' ? 'Proposal Review' : 'Grants Portal';
-  const signedIn = S.me && parts[0] === 'review';
+  const signedIn = S.me && (parts[0] === 'review' || parts[0] === 'manage');
   $('#topbar').innerHTML = `
     <a class="brand" href="#/">
       <span class="brand-mark"><svg width="18" height="18" viewBox="0 0 32 32"><path d="M8 24l8-16 8 16" stroke="#e0b04a" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -212,13 +212,23 @@ function topbar() {
     ${S.demo ? '<span class="demo-flag" title="Sample data stored only in this browser">Demo</span>' : ''}
     ${signedIn ? `<div class="userchip"><span class="who">${esc(S.me.display_name || S.me.email)}${isAdmin() ? ' · Coordinator' : ''}</span>
       <button class="btn sm" data-top="pw">Password</button><button class="btn sm" data-top="out">Sign out</button></div>` : ''}
-    ${parts[0] === 'manage' && ss.get(MGMT_KEY) === '1' ? '<button class="btn sm" data-top="lock">Lock</button>' : ''}`;
+    ${parts[0] === 'manage' && S.me ? '<button class="btn sm gold" data-top="lock" title="Lock Grants Management">Lock</button>' : ''}`;
   $('#topbar').onclick = async e => {
     const b = e.target.closest('[data-top]'); if (!b) return;
-    if (b.dataset.top === 'out') { await S.api.signOut(); S.me = null; S.loaded = false; go(''); }
+    if (b.dataset.top === 'out') { await lockMgmt(); await S.api.signOut(); S.me = null; S.loaded = false; go(''); }
     if (b.dataset.top === 'pw') changeOwnPassword();
-    if (b.dataset.top === 'lock') { ss.del(MGMT_KEY); go(''); }
+    if (b.dataset.top === 'lock') { await lockMgmt(); toast('Grants Management locked'); go(''); }
   };
+}
+
+async function lockMgmt() {
+  ss.del(MGMT_KEY);
+  if (window.Mgmt) window.Mgmt.reset();
+  if (S.api && S.api.mLock && S.me && isAdmin()) { try { await S.api.mLock(); } catch (e) { /* ignore */ } }
+}
+function mgmtHelpers() {
+  return { S, app, $, $$, esc, toast, modal, confirmBox, copyText, download, csv, money, go, ss, MGMT_KEY, CFG, FUNDED, pa, colleges, stamp, loadAll,
+    tierChip: t => tierChip(t) };
 }
 
 function changeOwnPassword() {
@@ -251,7 +261,12 @@ async function render() {
   topbar();
   try {
     if (!parts.length) return viewLanding();
-    if (parts[0] === 'manage') return viewManage();
+    if (parts[0] === 'manage') {
+      if (!S.api || !S.me || !isAdmin()) { ss.del(MGMT_KEY); return go(''); }
+      if (!S.loaded) { app.innerHTML = '<div class="empty">Loading…</div>'; await loadAll(); if (my !== rendering) return; }
+      ss.set(MGMT_KEY, '1');
+      return window.Mgmt.render(parts.slice(1), mgmtHelpers());
+    }
     if (parts[0] === 'review') {
       if (!S.api || !S.me) return go('');
       if (!S.loaded) { app.innerHTML = '<div class="empty">Loading…</div>'; await loadAll(); if (my !== rendering) return; }
@@ -293,7 +308,8 @@ function viewLanding() {
           <button type="button" class="btn sm" data-demo="business@demo">Reviewer (Business)</button>
           <button type="button" class="btn sm" data-demo="pharmacy@demo">Reviewer (Pharmacy)</button></div></div>` : ''}
       </form>`;
-  const unlocked = ss.get(MGMT_KEY) === '1';
+  const unlocked = ss.get(MGMT_KEY) === '1' && S.me && isAdmin();
+  const needLogin = !(S.me && isAdmin());
   app.innerHTML = `<div class="wrap">
     <section class="hero">
       <div class="eyebrow">${esc(CFG.INSTITUTION || '')}</div>
@@ -310,13 +326,17 @@ function viewLanding() {
       <div class="card pcard mg">
         <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 15h3"/></svg></div>
         <h2>Grants Management</h2>
-        <p>For the initiative coordinator. Awardee tracking, conditions of award, stipends and reporting. <span class="badge b-gold">In development</span></p>
-        ${unlocked ? '<a class="btn gold" href="#/manage">Open grants management →</a>' : `
-        <form id="mgmtForm">
+        <p>For the initiative coordinator. Awardees, conditions of award, sessions, stipends and spending, assessment results and reporting.</p>
+        ${unlocked ? `<div class="row"><a class="btn gold" href="#/manage">Open grants management →</a><button class="btn ghost" data-act="mlock">Lock</button></div>` : `
+        <form id="mgmtForm" autocomplete="on">
+          ${needLogin ? `${S.me ? `<div class="small muted">Signed in as ${esc(S.me.display_name || S.me.email)}, who is not the coordinator. Sign in with the coordinator account:</div>` : ''}
+          <div><label class="f" for="memail">Coordinator email</label><input class="input" id="memail" type="email" autocomplete="username" required></div>
+          <div><label class="f" for="mlpw">Coordinator password</label><input class="input" id="mlpw" type="password" autocomplete="current-password" required></div>`
+          : `<div class="small muted">Signed in as ${esc(S.me.display_name || S.me.email)}.</div>`}
           <div><label class="f" for="mpw">Management password</label><input class="input" id="mpw" type="password" autocomplete="off" required></div>
           <div class="err" id="merr"></div>
           <button class="btn gold" type="submit" ${S.api ? '' : 'disabled'}>Unlock</button>
-          ${S.demo ? '<div class="small muted">Demo password: <code>demo</code></div>' : ''}
+          ${S.demo ? '<div class="small muted">Demo: <code>coordinator@demo</code> / <code>demo</code>, management password <code>demo</code></div>' : ''}
         </form>`}
       </div>
     </div>
@@ -340,40 +360,30 @@ function viewLanding() {
   const mf = $('#mgmtForm');
   if (mf) mf.onsubmit = async e => {
     e.preventDefault(); $('#merr').textContent = '';
+    const btn = $('button[type=submit]', mf); btn.disabled = true;
     try {
-      if (await S.api.checkMgmtPassword($('#mpw').value)) { ss.set(MGMT_KEY, '1'); go('manage'); }
-      else $('#merr').textContent = 'Incorrect password.';
+      if ($('#memail')) { S.me = await S.api.signIn($('#memail').value, $('#mlpw').value); S.loaded = false; }
+      if (!isAdmin()) { $('#merr').textContent = 'Grants Management is for the initiative coordinator only.'; btn.disabled = false; topbar(); return; }
+      let ok = false;
+      try { ok = await S.api.mUnlock($('#mpw').value); }
+      catch (err) {
+        if (err.message === 'MGMT_NOT_INSTALLED') { $('#merr').innerHTML = 'The Grants Management tables aren\u2019t installed yet: run <code>supabase/management.sql</code> in the Supabase SQL Editor, then try again.'; btn.disabled = false; return; }
+        throw err;
+      }
+      if (ok) { if (window.Mgmt) window.Mgmt.reset(); ss.set(MGMT_KEY, '1'); go('manage'); }
+      else { $('#merr').textContent = 'Incorrect management password.'; topbar(); }
     } catch (err) { $('#merr').textContent = err.message; }
+    btn.disabled = false;
   };
   app.onclick = async e => {
     const d = e.target.closest('[data-demo]');
     if (d) { $('#lemail').value = d.dataset.demo; $('#lpw').value = 'demo'; lf.requestSubmit(); }
     const a = e.target.closest('[data-act]'); if (!a) return;
-    if (a.dataset.act === 'signout') { await S.api.signOut(); S.me = null; S.loaded = false; render(); }
-    if (a.dataset.act === 'resetdemo') { S.api.reset(); S.me = null; S.loaded = false; ss.del(MGMT_KEY); toast('Demo data reset'); render(); }
+    if (a.dataset.act === 'signout') { await lockMgmt(); await S.api.signOut(); S.me = null; S.loaded = false; render(); }
+    if (a.dataset.act === 'mlock') { await lockMgmt(); toast('Grants Management locked'); render(); }
+    if (a.dataset.act === 'resetdemo') { S.api.reset(); S.me = null; S.loaded = false; ss.del(MGMT_KEY); if (window.Mgmt) window.Mgmt.reset(); toast('Demo data reset'); render(); }
   };
   app.onchange = app.oninput = null;
-}
-
-// ====================================================================
-// Grants Management (placeholder)
-// ====================================================================
-function viewManage() {
-  if (ss.get(MGMT_KEY) !== '1') return go('');
-  const mods = [
-    ['Awardee roster', 'Funded projects, leads and co-leads, tier, college, and award amount, carried over from the review platform.'],
-    ['Conditions of award', 'Per-awardee checklist: AI training series, pre/post assessment, Lightning Talks, Community of Practice, AI Ambassador.'],
-    ['Budget & stipends', 'Non-stipend spending against budget; stipend release in early summer 2027 on completion of conditions.'],
-    ['Assessment data', 'Pre/post Domain 1 results and additional-domain instruments for each project.'],
-    ['Reports & repository', 'Final reports, revised syllabi and assignments, and deposit to the institutional repository.'],
-    ['Donor impact report', 'Roll-up of students reached, proficiency gains and testimonials for the June 2027 report.']
-  ];
-  app.innerHTML = `<div class="wrap">
-    <div class="pagehead"><div><div class="eyebrow">Placeholder</div><h1>Grants Management</h1>
-      <p>This side of the portal is reserved for post-award management. Planned modules:</p></div></div>
-    <div class="mods">${mods.map(m => `<div class="card mod"><h3>${esc(m[0])}</h3><p>${esc(m[1])}</p></div>`).join('')}</div>
-  </div>`;
-  app.onclick = app.onchange = app.oninput = null;
 }
 
 // ====================================================================
@@ -623,7 +633,7 @@ function adminShell(tab, inner, extraHead = '') {
   return `<div class="wrap">
     <div class="pagehead"><div><div class="eyebrow">Coordinator</div><h1>Proposal Review</h1>
     <p>${released().length} of ${S.proposals.length} proposals released · ${members().length} active reviewers · reviewing ${reviewsOpen() ? '<span class="badge b-ok">open</span>' : '<span class="badge b-plain">closed</span>'}${deadlineStr() ? ' · due ' + esc(deadlineStr()) : ''}</p></div>
-    <div class="row noprint">${extraHead}<button class="btn" data-act="refresh">Refresh</button></div></div>
+    <div class="row noprint">${extraHead}<a class="btn" href="#/manage">Grants Management</a><button class="btn" data-act="refresh">Refresh</button></div></div>
     <nav class="tabs">${TABS.filter(([k]) => k !== 'mine' || coordReviews()).map(([k, l]) => `<a class="tab ${k === tab ? 'on' : ''}" href="#/review/admin/${k}">${l}${counts[k] != null ? `<span class="count">${counts[k]}</span>` : ''}</a>`).join('')}</nav>
     ${inner}</div>`;
 }

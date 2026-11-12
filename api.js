@@ -148,6 +148,40 @@
     // Management platform gate
     async checkMgmtPassword(pw) { return !!check(await this.sb.rpc('check_mgmt_password', { pw })); }
     async setMgmtPassword(pw) { check(await this.sb.rpc('set_mgmt_password', { pw }), 'Changing password'); }
+
+    // ---- Grants Management: the database requires a coordinator login AND an unlock ----
+    async mUnlock(pw) {
+      const r = await this.sb.rpc('unlock_mgmt', { pw });
+      if (r.error) { if (/unlock_mgmt|schema cache|does not exist/i.test(r.error.message)) throw new Error('MGMT_NOT_INSTALLED'); throw new Error(r.error.message); }
+      return !!r.data;
+    }
+    async mLock() { await this.sb.rpc('lock_mgmt'); }
+    async mStatus() {
+      const r = await this.sb.rpc('mgmt_ok');
+      if (r.error) { if (/mgmt_ok|schema cache|does not exist/i.test(r.error.message)) throw new Error('MGMT_NOT_INSTALLED'); throw new Error(r.error.message); }
+      return !!r.data;
+    }
+    async mList(table) { return check(await this.sb.from(table).select('*'), 'Loading ' + table); }
+    async mInsert(table, row) { return check(await this.sb.from(table).insert(row).select().single(), 'Saving'); }
+    async mInsertMany(table, rows) { if (!rows.length) return []; return check(await this.sb.from(table).insert(rows, { defaultToNull: false }).select(), 'Saving'); }
+    async mUpdate(table, id, patch) { return check(await this.sb.from(table).update(patch).eq('id', id).select().single(), 'Saving'); }
+    async mUpsert(table, row, onConflict) { return check(await this.sb.from(table).upsert(row, { onConflict }).select().single(), 'Saving'); }
+    async mDelete(table, match) {
+      let q = this.sb.from(table).delete();
+      Object.keys(match).forEach(k => { q = q.eq(k, match[k]); });
+      check(await q, 'Deleting');
+    }
+    async mUpload(file) {
+      const ext = ((file.name || '').match(/\.[A-Za-z0-9]{1,8}$/) || [''])[0].toLowerCase();
+      const path = `${crypto.randomUUID()}${ext}`;
+      check(await this.sb.storage.from('management').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false }), 'Uploading file');
+      return path;
+    }
+    async mFileUrl(path, name) {
+      const d = check(await this.sb.storage.from('management').createSignedUrl(path, 3600, name ? { download: name } : undefined), 'Opening file');
+      return d.signedUrl;
+    }
+    async mRemove(path) { if (path) await this.sb.storage.from('management').remove([path]); }
   }
 
   // ------------------------------------------------------------------
@@ -237,15 +271,98 @@
     };
   }
 
+
+  // ---- Demo management data ----
+  const M_TABLES = ['mgmt_awards', 'mgmt_people', 'mgmt_sessions', 'mgmt_attendance', 'mgmt_milestones', 'mgmt_budget_lines',
+    'mgmt_expenses', 'mgmt_assessments', 'mgmt_surveys', 'mgmt_survey_done', 'mgmt_testimonials', 'mgmt_deliverables'];
+  // child table -> [foreign key, action] when a parent row is deleted
+  const M_CASCADE = {
+    mgmt_awards: [['mgmt_people', 'award_id', 'del'], ['mgmt_attendance', 'award_id', 'del'], ['mgmt_budget_lines', 'award_id', 'del'], ['mgmt_expenses', 'award_id', 'del'],
+      ['mgmt_assessments', 'award_id', 'del'], ['mgmt_survey_done', 'award_id', 'del'], ['mgmt_deliverables', 'award_id', 'del'], ['mgmt_testimonials', 'award_id', 'null']],
+    mgmt_sessions: [['mgmt_attendance', 'session_id', 'del']],
+    mgmt_surveys: [['mgmt_survey_done', 'survey_id', 'del']],
+    mgmt_budget_lines: [['mgmt_expenses', 'line_id', 'null']],
+    mgmt_people: [['mgmt_budget_lines', 'person_id', 'null']]
+  };
+  const M_DEFAULTS = {
+    mgmt_awards: { code: '', title: '', tier: 'micro', college: '', department: '', award_total: 0, status: 'active', course_info: '', domains: [1], students_planned: null, students_reached: null,
+      repository_url: '', repository_done: false, ambassador_done: false, ambassador_note: '', waivers: {}, notes: '', proposal_id: null },
+    mgmt_people: { name: '', email: '', department: '', role: 'lead' },
+    mgmt_sessions: { kind: 'other', title: '', session_date: null, start_time: '', location: '', counts_cop: false, notes: '', sort: 0 },
+    mgmt_attendance: { attended: false, presented: false },
+    mgmt_milestones: { title: '', due_date: null, done: false, notes: '', sort: 0 },
+    mgmt_budget_lines: { category: 'stipend', description: '', amount: 0, person_id: null, stipend_status: 'pending', status_date: null, notes: '' },
+    mgmt_expenses: { line_id: null, spent_on: null, vendor: '', description: '', amount: 0, reference: '', file_path: null, file_name: null },
+    mgmt_assessments: { domain: 1, instrument: '', scale_max: null, n_pre: null, mean_pre: null, sd_pre: null, n_post: null, mean_post: null, sd_post: null, notes: '', file_path: null, file_name: null },
+    mgmt_surveys: { name: '', due_date: null, link: '', sort: 0 },
+    mgmt_survey_done: { completed_on: null },
+    mgmt_testimonials: { award_id: null, quote: '', attribution: '', kind: 'student', featured: false },
+    mgmt_deliverables: { kind: 'other', file_path: null, file_name: null, url: '', received_on: null, notes: '' }
+  };
+
+  function seedMgmt(db) {
+    const T = {}; M_TABLES.forEach(t => { T[t] = []; });
+    const now = new Date().toISOString();
+    const add = (t, row) => { const r = Object.assign({ id: uid(), created_at: now }, M_DEFAULTS[t], row); T[t].push(r); return r; };
+    const picks = [['p-1', 'midi', 2800], ['p-3', 'midi', 3000], ['p-5', 'midi', 2500], ['p-6', 'micro', 900], ['p-4', 'micro', 1000], ['p-2', 'micro', 1000]];
+    const people = [['Avery Collins', 'Biology'], ['Morgan Blake', 'Accounting'], ['Riley Chen', 'Pharmacy Practice'], ['Jamie Ortiz', 'English'], ['Taylor Brooks', 'Mechanical Engineering'], ['Quinn Harper', 'Law']];
+    const awards = picks.map(([pid, tier, amt], i) => {
+      const p = db.proposals.find(x => x.id === pid) || { code: 'P-0' + (i + 1), title: 'Demo project ' + (i + 1) };
+      const pa = db.padmin.find(x => x.proposal_id === pid);
+      if (pa) { pa.decision = 'fund'; pa.awarded = amt; }
+      const a = add('mgmt_awards', { proposal_id: pid, code: p.code, title: p.title, tier, college: pa ? pa.college : '', department: people[i][1], award_total: amt,
+        domains: tier === 'midi' ? [1, 3, 4] : [1], students_planned: [180, 120, 90, 22, 60, 35][i], students_reached: i < 3 ? [171, 0, 0, 0, 0, 0][i] || null : null,
+        course_info: tier === 'midi' ? 'Multi-section required course' : 'Single-section required course' });
+      const lead = add('mgmt_people', { award_id: a.id, name: people[i][0], email: people[i][0].toLowerCase().replace(/\s+/g, '.') + '@example.edu', department: people[i][1], role: 'lead' });
+      if (i === 0) add('mgmt_people', { award_id: a.id, name: 'Sam Rivera', email: 'sam.rivera@example.edu', department: 'Biology', role: 'co-lead' });
+      if (i === 1) {
+        add('mgmt_budget_lines', { award_id: a.id, category: 'stipend', description: 'Stipend – module development', amount: 2600, person_id: lead.id });
+        const sw = add('mgmt_budget_lines', { award_id: a.id, category: 'software', description: 'AI tool license, Spring 2027', amount: 400 });
+        add('mgmt_expenses', { award_id: a.id, line_id: sw.id, spent_on: '2026-12-03', vendor: 'Demo Software Co.', description: '20 seats, spring term', amount: 380, reference: 'PO 10442' });
+      } else add('mgmt_budget_lines', { award_id: a.id, category: 'stipend', description: 'Stipend', amount: amt, person_id: lead.id });
+      return a;
+    });
+    const s = [
+      add('mgmt_sessions', { kind: 'convening', title: 'Awardee convening & Community of Practice launch', session_date: '2026-11-20', counts_cop: true, sort: 1 }),
+      add('mgmt_sessions', { kind: 'training', title: 'AI Training 1', session_date: '2026-12-04', start_time: '12:00', sort: 2 }),
+      add('mgmt_sessions', { kind: 'training', title: 'AI Training 2', session_date: '2027-01-22', start_time: '12:00', sort: 3 }),
+      add('mgmt_sessions', { kind: 'training', title: 'AI Training 3', sort: 4 }),
+      add('mgmt_sessions', { kind: 'lightning', title: 'Lunch Lightning Talks #1', session_date: '2027-03-05', counts_cop: true, sort: 5 }),
+      add('mgmt_sessions', { kind: 'lightning', title: 'Lunch Lightning Talks #2', session_date: '2027-04-09', counts_cop: true, sort: 6 }),
+      add('mgmt_sessions', { kind: 'watch', title: 'CIC webinar watch party', session_date: '2027-02-12', counts_cop: true, sort: 7 })
+    ];
+    awards.forEach((a, i) => {
+      T.mgmt_attendance.push({ session_id: s[0].id, award_id: a.id, attended: i !== 4, presented: false });
+      T.mgmt_attendance.push({ session_id: s[1].id, award_id: a.id, attended: i !== 3, presented: false });
+      if (i < 3) T.mgmt_attendance.push({ session_id: s[2].id, award_id: a.id, attended: true, presented: false });
+    });
+    [['Award notifications', '2026-11-16', true], ['Awardees convene; Community of Practice launches', '2026-11-20', true],
+      ['Pre-assessment (start of Spring 2027)', '2027-01-29', false], ['Post-assessment (end of Spring 2027)', '2027-04-30', false],
+      ['Final report, assessment data and surveys due', '2027-05-07', false], ['Stipends released (early summer 2027)', null, false],
+      ['Donor impact report drafted', null, false]].forEach(([title, due_date, done], i) => add('mgmt_milestones', { title, due_date, done, sort: i }));
+    const sv = add('mgmt_surveys', { name: 'Final initiative survey (impact, testimonials, plans to scale)', due_date: '2027-05-07', link: 'https://forms.example.com/final', sort: 1 });
+    add('mgmt_surveys', { name: 'Mid-semester check-in', due_date: '2027-03-12', link: 'https://forms.example.com/mid', sort: 0 });
+    T.mgmt_survey_done.push({ survey_id: sv.id, award_id: awards[3].id, completed_on: '2027-05-01' });
+    add('mgmt_assessments', { award_id: awards[0].id, domain: 1, instrument: 'Domain 1 common rubric', scale_max: 4, n_pre: 171, mean_pre: 1.9, sd_pre: 0.7, n_post: 158, mean_post: 3.1, sd_post: 0.6 });
+    add('mgmt_assessments', { award_id: awards[0].id, domain: 3, instrument: 'Prompting task rubric', scale_max: 10, n_pre: 171, mean_pre: 4.2, sd_pre: 1.8, n_post: 158, mean_post: 7.4, sd_post: 1.5 });
+    add('mgmt_assessments', { award_id: awards[3].id, domain: 1, instrument: 'Domain 1 common rubric', scale_max: 4, n_pre: 22, mean_pre: 2.2, sd_pre: 0.8, n_post: 21, mean_post: 3.0, sd_post: 0.7 });
+    add('mgmt_testimonials', { award_id: awards[0].id, quote: 'I used to trust whatever the chatbot said. Now I check every citation, and I caught two that did not exist.', attribution: 'First-year student', kind: 'student', featured: true });
+    add('mgmt_testimonials', { award_id: awards[3].id, quote: 'Students finally had a vocabulary for why an AI answer was weak.', attribution: 'Project lead', kind: 'faculty', featured: false });
+    add('mgmt_deliverables', { award_id: awards[3].id, kind: 'final_report', url: 'https://example.edu/demo-report', received_on: '2027-05-01' });
+    add('mgmt_deliverables', { award_id: awards[3].id, kind: 'syllabus', url: 'https://example.edu/demo-syllabus', received_on: '2027-05-01' });
+    return { tables: T, unlocked: 0 };
+  }
+
   class DemoApi {
     constructor() {
       this.demo = true;
       this.blobs = {};
       try { this.db = JSON.parse(localStorage.getItem(DEMO_KEY) || 'null'); } catch (e) { this.db = null; }
       if (!this.db) this.db = seedDemo();
+      if (!this.db.m) { this.db.m = seedMgmt(this.db); }
     }
     _save() { try { localStorage.setItem(DEMO_KEY, JSON.stringify(this.db)); } catch (e) { /* storage unavailable: keep in memory */ } }
-    reset() { this.db = seedDemo(); this.blobs = {}; this._save(); }
+    reset() { this.db = seedDemo(); this.db.m = seedMgmt(this.db); this.blobs = {}; this._save(); }
     _me() { return this.db.profiles.find(p => p.id === this.db.session); }
     _admin() { const m = this._me(); if (!m || m.role !== 'admin') throw new Error('Only the coordinator can do this'); }
     _wait() { return new Promise(r => setTimeout(r, 60)); }
@@ -371,6 +488,46 @@
 
     async checkMgmtPassword(pw) { await this._wait(); return pw === this.db.mgmt; }
     async setMgmtPassword(pw) { this._admin(); if (pw.length < 8) throw new Error('Password must be at least 8 characters'); this.db.mgmt = pw; this._save(); }
+
+    // ---- Grants Management (demo) ----
+    _mOk() { const m = this._me(); return !!(m && m.role === 'admin' && this.db.m.unlocked > Date.now()); }
+    _mGuard() { if (!this._mOk()) throw new Error('Grants Management is locked. Unlock it again from the portal page.'); }
+    async mUnlock(pw) { await this._wait(); const m = this._me(); if (!m || m.role !== 'admin' || pw !== this.db.mgmt) return false; this.db.m.unlocked = Date.now() + 12 * 3600e3; this._save(); return true; }
+    async mLock() { this.db.m.unlocked = 0; this._save(); }
+    async mStatus() { return this._mOk(); }
+    async mList(table) { await this._wait(); this._mGuard(); return JSON.parse(JSON.stringify(this.db.m.tables[table] || [])); }
+    _mNew(table, row) {
+      const r = Object.assign({}, M_DEFAULTS[table], row);
+      if (!('id' in r) && table !== 'mgmt_attendance' && table !== 'mgmt_survey_done') r.id = uid();
+      if (table !== 'mgmt_attendance' && table !== 'mgmt_survey_done' && !r.created_at) r.created_at = new Date().toISOString();
+      return r;
+    }
+    async mInsert(table, row) { this._mGuard(); const r = this._mNew(table, row); this.db.m.tables[table].push(r); this._save(); return JSON.parse(JSON.stringify(r)); }
+    async mInsertMany(table, rows) { const out = []; for (const r of rows) out.push(await this.mInsert(table, r)); return out; }
+    async mUpdate(table, id, patch) {
+      this._mGuard(); const r = this.db.m.tables[table].find(x => x.id === id);
+      if (!r) throw new Error('Saving: row not found'); Object.assign(r, patch); this._save(); return JSON.parse(JSON.stringify(r));
+    }
+    async mUpsert(table, row, onConflict) {
+      this._mGuard(); const keys = (onConflict || 'id').split(',').map(k => k.trim());
+      const r = this.db.m.tables[table].find(x => keys.every(k => x[k] === row[k]));
+      if (r) { Object.assign(r, row); this._save(); return JSON.parse(JSON.stringify(r)); }
+      return this.mInsert(table, row);
+    }
+    async mDelete(table, match) {
+      this._mGuard();
+      const hit = r => Object.keys(match).every(k => r[k] === match[k]);
+      const gone = this.db.m.tables[table].filter(hit);
+      this.db.m.tables[table] = this.db.m.tables[table].filter(r => !hit(r));
+      gone.forEach(g => (M_CASCADE[table] || []).forEach(([child, fk, act]) => {
+        if (act === 'del') this.db.m.tables[child] = this.db.m.tables[child].filter(c => c[fk] !== g.id);
+        else this.db.m.tables[child].forEach(c => { if (c[fk] === g.id) c[fk] = null; });
+      }));
+      this._save();
+    }
+    async mUpload(file) { this._mGuard(); const path = 'demo-' + uid(); this.blobs[path] = URL.createObjectURL(file); return path; }
+    async mFileUrl(path) { if (this.blobs[path]) return this.blobs[path]; throw new Error('Demo files are kept only until the page is reloaded.'); }
+    async mRemove(path) { delete this.blobs[path]; }
   }
 
   window.GrantsApi = { SupabaseApi, DemoApi };

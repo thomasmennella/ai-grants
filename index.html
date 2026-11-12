@@ -226,6 +226,48 @@ details.rb{border:1px solid var(--line);border-radius:8px;background:#fff;margin
 details.rb summary{padding:10px 12px;cursor:pointer;font-weight:600;display:flex;gap:10px;align-items:center}
 details.rb .rb-body{padding:4px 12px 12px;display:grid;gap:8px}
 
+
+/* ---------- Grants Management ---------- */
+.ck{display:inline-block;min-width:26px;font-weight:700;font-size:12.5px;border-radius:6px;padding:1px 6px}
+.ck.ok{color:var(--ok);background:var(--ok-soft)}
+.ck.part{color:var(--warn);background:var(--warn-soft)}
+.ck.waived{color:var(--muted);background:#efece5;font-weight:600;font-size:11px}
+.ck.opt{color:var(--navy);background:var(--navy-soft)}
+.tbl.mtx td,.tbl.mtx th{padding:7px 8px}
+.clip{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch{margin-bottom:10px}
+.fgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}
+.fgrid .span2{grid-column:span 2}.fgrid .span3{grid-column:1/-1}
+ul.plain{list-style:none;margin:0;padding:0}
+ul.plain li{padding:6px 0;border-top:1px solid #eeebe4;font-size:13.5px}
+ul.plain li:first-child{border-top:0}
+ul.plain .date{display:inline-block;min-width:78px;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums}
+ul.warnlist li:before{content:'⚠';color:var(--warn);margin-right:6px}
+.quote{border-left:3px solid var(--gold-2);padding:6px 12px;margin:8px 0;font-family:var(--serif);font-size:15px}
+.quote.big{font-size:17px;margin:12px 0}
+.cbx{width:16px;height:16px;accent-color:var(--navy);cursor:pointer;vertical-align:middle}
+.pres{display:block;font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap}
+.pres .cbx{width:13px;height:13px;margin-right:2px}
+.vh{max-width:110px;white-space:normal;line-height:1.25;text-transform:none;letter-spacing:0;font-size:11px}
+.tbl .input.sm{min-width:0}
+.tbl.asm .input.sm{padding:4px 6px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.legend .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.sw.pre,.gchart .pre{background:#86b6ef;fill:#86b6ef}
+.sw.post,.gchart .post{background:#1c5cab;fill:#1c5cab}
+.gchart{width:100%;height:auto;max-width:760px;display:block}
+.gchart .gl{stroke:#e7e3da;stroke-width:1}
+.gchart .ax{font:11px var(--sans);fill:var(--muted)}
+.gchart .lb{font:12.5px var(--sans);fill:var(--ink-2)}
+.gchart .vl{font:600 11.5px var(--sans);fill:var(--ink)}
+.gchart .hit:hover rect{opacity:.85}
+.report h2{font-size:20px;margin-bottom:10px}
+.report,.gchart,.legend .sw{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.rsec{margin:22px 0;break-inside:avoid}
+.narr p{margin:0 0 10px;line-height:1.6}
+@media (max-width:720px){ .fgrid{grid-template-columns:1fr}.fgrid .span2,.fgrid .span3{grid-column:auto} }
+@media print{ .report .kpis{grid-template-columns:repeat(4,1fr)} .rsec{page-break-inside:avoid} }
+
 @media (max-width: 980px){
   .score-shell{grid-template-columns:1fr;grid-template-rows:auto;height:auto;overflow:visible}
   .rub-body{overflow:visible}
@@ -269,6 +311,7 @@ details.rb .rb-body{padding:4px 12px 12px;display:grid;gap:8px}
 <script src="config.js"></script>
 <script src="rubric.js"></script>
 <script src="api.js"></script>
+<script src="mgmt.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
