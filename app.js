@@ -19,6 +19,16 @@ const ss = {
   set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* ignore */ } },
   del(k) { try { sessionStorage.removeItem(k); } catch (e) { /* ignore */ } }
 };
+// Collapsible "How this works" guides; open/closed state is remembered per guide in this browser.
+const HELP_KEY = 'aigp-help-open';
+function helpOpen(id) { try { return JSON.parse(localStorage.getItem(HELP_KEY) || '{}')[id] === true; } catch (e) { return false; } }
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (!d || !d.matches || !d.matches('details.help')) return;
+  try { const m = JSON.parse(localStorage.getItem(HELP_KEY) || '{}'); m[d.dataset.help] = d.open; localStorage.setItem(HELP_KEY, JSON.stringify(m)); } catch (err) { /* ignore */ }
+}, true);
+const help = (id, title, body, cls) => `<details class="help noprint ${cls || ''}" data-help="${id}" ${helpOpen(id) ? 'open' : ''}><summary><span class="help-i" aria-hidden="true">?</span><span>${esc(title)}</span></summary><div class="help-body">${body}</div></details>`;
+
 const DEFAULT_COLLEGES = ['Arts and Sciences', 'Business', 'Engineering', 'Law', 'Pharmacy and Health Sciences'];
 const DECISIONS = [
   ['', '— undecided —'], ['fund', 'Fund in full'], ['partial', 'Fund partially'],
@@ -227,7 +237,7 @@ async function lockMgmt() {
   if (S.api && S.api.mLock && S.me && isAdmin()) { try { await S.api.mLock(); } catch (e) { /* ignore */ } }
 }
 function mgmtHelpers() {
-  return { S, app, $, $$, esc, toast, modal, confirmBox, copyText, download, csv, money, go, ss, MGMT_KEY, CFG, FUNDED, pa, colleges, stamp, loadAll,
+  return { S, app, $, $$, esc, toast, modal, confirmBox, copyText, download, csv, money, go, ss, MGMT_KEY, CFG, FUNDED, pa, colleges, stamp, loadAll, help,
     tierChip: t => tierChip(t) };
 }
 
@@ -527,6 +537,13 @@ async function viewScore(pid) {
     if (cur.status === 'submitted') top = `<div class="lockbar"><strong>Submitted</strong>${cur.submitted_at ? ' on ' + esc(dateStr(cur.submitted_at)) : ''}. This review is locked; contact the coordinator to reopen it.</div>`;
     else if (!canEdit()) top = '<div class="lockbar closed">Reviewing is closed. Your draft is shown read-only.</div>';
     else top = `<div class="coi-box row between"><span>Conflict of interest? If you can identify an author or have a stake in this proposal, recuse yourself.</span><button class="btn sm" data-act="recuse">Recuse myself</button></div>`;
+    if (canEdit()) top = help('rv-score', 'How to score', `
+      <ul><li>Read the proposal on the left. For each criterion, click the level that fits; click it again to clear it.</li>
+      <li>Your work saves automatically as a draft ("Saved" appears at the bottom). You can leave and come back.</li>
+      <li>Comments are optional: one per criterion, plus an overall comment.</li>
+      <li>Tick any bonus that applies.</li>
+      <li><strong>Submit final review</strong> locks it. Ask the coordinator if it needs reopening.</li>
+      <li>If you can identify the author or have a stake in the project, click <strong>Recuse myself</strong> instead of scoring.</li></ul>`) + top;
     return top + rb.criteria.map(critHTML).join('') + bonusHTML() + `
       <div class="crit"><div class="crit-h"><h3>Overall comments</h3></div>
       <textarea class="input" rows="4" data-overall placeholder="Strengths, weaknesses, and suggestions (optional)" ${canEdit() ? '' : 'readonly'} style="margin-top:8px">${esc(cur.overall_comment || '')}</textarea></div>`;
@@ -682,6 +699,13 @@ function tabScores() {
   const rows = sortedProposals(S.proposals, S.scoreSort);
   const above = rows.filter(x => x.st.status === 'above');
   const inner = `
+    ${help('rv-scores', 'How to read the score matrix', `
+  <p>One row per proposal and one column per reviewer. Each cell is that reviewer's total out of 56.</p>
+  <ul><li><strong>Bold</strong> = submitted and counted · <em>italic</em> = draft, not counted · <strong>COI</strong> = recused · — = not started.</li>
+  <li><strong>Mean</strong>, <strong>SD</strong> and <strong>range</strong> use submitted reviews only. An SD of 5 or more is shaded: reviewers disagreed.</li>
+  <li><strong>Status</strong> is above or below the threshold (mean ≥ threshold and Competency mean above 0); change it in <a href="#/review/admin/settings">Settings</a>. <strong>Split criteria</strong> are criteria where reviewers' scores differ by an SD of 1 or more.</li>
+  <li><strong>Click a row</strong> to see each reviewer's criterion scores and comments. From there you can reopen a submitted review or record a recusal.</li>
+  <li>When scoring is done, record decisions in the <a href="#/review/admin/funding">Funding planner</a>; use the buttons below to export CSVs.</li></ul>`)}
     <div class="kpis">
       <div class="kpi hl"><div class="v num">${subCount} <span class="muted" style="font-size:16px">of ${expected}</span></div><div class="l">Reviews submitted</div><div class="bar"><i style="width:${expected ? Math.round(100 * subCount / expected) : 0}%"></i></div></div>
       <div class="kpi"><div class="v num">${draftCount}</div><div class="l">Drafts in progress</div></div>
@@ -777,6 +801,14 @@ function viewDetail(pid) {
     <div class="row" style="gap:10px;margin-bottom:4px"><h2 class="num">${esc(p.code)}</h2>${tierChip(p.tier)}${statusBadge(st)}${p.released ? '' : '<span class="badge b-warn">Not released</span>'}</div>
     <div style="font-size:16px;margin-bottom:4px">${esc(p.title)}</div>
     <div class="muted small" style="margin-bottom:18px">${esc(a.college || 'College not set')} · requested ${money(a.requested)} · <button class="linkbtn" data-act="pdf">Open PDF ↗</button></div>
+    ${help('rv-detail', 'Using this page', `
+  <ul><li>Each reviewer column shows their 0–4 score per criterion. <em>Italic</em> numbers are drafts and are not counted.</li>
+  <li>Shaded cells mark a <strong>split</strong> criterion (reviewers' SD of 1 or more), which is worth discussing.</li>
+  <li><strong>Reopen</strong> returns a submitted review to draft so the reviewer can change it. It stops counting until it is resubmitted.</li>
+  <li><strong>Mark COI</strong> records a recusal on a reviewer's behalf; <strong>Clear COI</strong> undoes one.</li>
+  <li>Your private notes save when you click outside the box.</li>
+  <li>Use the ← → buttons to step through proposals in the current sort order.</li></ul>`)}
+    
     <div class="kpis" style="grid-template-columns:minmax(220px,1fr) minmax(260px,1.4fr)">
         <div class="kpi hl"><div class="l">Mean total (submitted)</div><div class="v num">${fmt1(st.mean)} <span class="muted" style="font-size:15px">/ ${maxBase() + maxBonus()}</span></div>
           <div class="small muted num" style="margin-top:4px">SD ${fmt1(st.sd)} · range ${st.n ? fmtInt(st.min) + '–' + fmtInt(st.max) : '—'} · n = ${st.n}${st.drafts.length ? ` · ${st.drafts.length} draft` : ''}${st.recused.length ? ` · ${st.recused.length} recused` : ''}</div>
@@ -834,6 +866,12 @@ const collegeOptions = sel => ['<option value="">—</option>'].concat(colleges(
 function tabProposals() {
   const rows = S.proposals.slice().sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   const inner = `
+    ${help('rv-proposals', 'How to add and release proposals', `
+  <ol><li><strong>De-identify first.</strong> Remove the cover sheet, names, departments and identifying course numbers. Check by selecting all text in the PDF (Ctrl/Cmd+A): text hidden by colour still shows up, and screen readers will read it aloud.</li>
+  <li><strong>Drop the PDFs in the box.</strong> Each gets the next code (P-01, P-02, …), a title taken from the file name (edit it to a short neutral title) and a tier. Tier matters: reviewers see it, and "Number of Students Impacted" uses different thresholds for micro and midi.</li>
+  <li><strong>College and requested amount</strong> (🔒) are visible only to you. They feed the <a href="#/review/admin/funding">Funding planner</a>.</li>
+  <li>Click <strong>Upload</strong>. Proposals stay hidden from reviewers until you switch on <strong>Released</strong> (or click <strong>Release all</strong>).</li>
+  <li><strong>Replace</strong> swaps the PDF and keeps the scores. <strong>Delete</strong> removes the proposal and all of its reviews.</li></ol>`)}
     <div class="card pad" style="margin-bottom:20px">
       <div class="row between"><h3>Upload de-identified proposals</h3><span class="small muted">PDF only · you can drop several at once</span></div>
       <p class="small muted" style="margin:6px 0 12px">Before uploading, check that the cover sheet is removed and names, departments and identifying course numbers are gone. Reviewers see the code, title, tier and PDF only; college and requested amount stay with you.</p>
@@ -982,6 +1020,15 @@ function tabReviewers() {
   const rows = S.profiles.slice().sort((a, b) => (b.active - a.active) || (a.role === 'admin') - (b.role === 'admin') || a.display_name.localeCompare(b.display_name));
   const unitOpts = sel => colleges().map(c => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('') + (sel && !colleges().includes(sel) ? `<option selected>${esc(sel)}</option>` : '') + `<option value="" ${!sel ? 'selected' : ''}>—</option>`;
   const inner = `
+    ${help('rv-reviewers', 'How reviewer logins work', `
+  <ol><li>Enter the reviewer's name, email and the college or school they represent, then click <strong>Create login</strong>. A temporary password is filled in for you.</li>
+  <li>Copy the message that appears and send it to them. It contains the portal link, their email and the password, which is not shown again.</li>
+  <li>Reviewers can set their own password with the <strong>Password</strong> button after signing in.</li></ol>
+  <ul><li><strong>Reset password</strong> sets a new temporary password and gives you a fresh message to send.</li>
+  <li><strong>Invite text</strong> copies the message without a password, e.g. to resend the link.</li>
+  <li>Switching <strong>Active</strong> off blocks sign-in. Their submitted scores still count.</li>
+  <li>Role <strong>Coordinator</strong> gives full access, including Grants Management. Use it sparingly.</li>
+  <li><strong>Progress</strong> shows submitted reviews out of the released proposals they haven't recused from. Follow up from the <a href="#/review/admin/scores">Scores</a> matrix.</li></ul>`)}
     <div class="card pad" style="margin-bottom:20px">
       <h3 style="margin-bottom:12px">Add a reviewer</h3>
       <form id="addRev" class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));align-items:end">
@@ -1079,6 +1126,12 @@ function tabFunding() {
   const remaining = M.cap - M.awarded;
   const decSel = (id, val) => `<select class="input sm" data-dec="${id}">${DECISIONS.map(([v, l]) => `<option value="${v}" ${v === (val || '') ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   const inner = `
+    ${help('rv-funding', 'How the Funding planner works', `
+  <ul><li><strong>Eligible</strong> proposals (at or above the threshold) are ranked by mean score.</li>
+  <li><strong>Cumulative</strong> adds requested amounts down the list. <strong>Suggested</strong> funds each in full while the running total fits under the cap, which is set in <a href="#/review/admin/settings">Settings</a>.</li>
+  <li><strong>Top in college</strong> marks the best-scoring eligible proposal in each unit, and <strong>Tie</strong> marks equal means. Under RFP §9, ties go to the unit with fewer awards; see "Awards by college or school" below.</li>
+  <li>Choose a <strong>Decision</strong> for each proposal. Fund in full, Fund partially and Fund as micro-grant fill in the award amount, which you can edit.</li>
+  <li>These decisions are what <a href="#/manage/awardees">Grants Management → Import funded proposals</a> picks up once awards are approved.</li></ul>`)}
     <div class="kpis">
       <div class="kpi"><div class="v num">${money(M.cap)}</div><div class="l">Total funds this cycle</div></div>
       <div class="kpi hl"><div class="v num">${money(M.awarded)}</div><div class="l">Awarded so far (your decisions)</div><div class="bar"><i style="width:${Math.min(100, Math.round(100 * M.awarded / (M.cap || 1)))}%;background:${M.awarded > M.cap ? 'var(--bad)' : 'var(--ok)'}"></i></div></div>
@@ -1156,6 +1209,14 @@ function tabSettings() {
   const rb = R();
   const custom = !!(S.settings.rubric && S.settings.rubric.criteria);
   const inner = `
+    ${help('rv-settings', 'What these settings do', `
+  <ul><li><strong>Reviewing is open</strong>: switch it off when the window closes. Reviewers can then read their scores but not change them.</li>
+  <li><strong>Review deadline</strong>: shown on each reviewer's queue.</li>
+  <li><strong>Threshold</strong> and <strong>counts bonus points</strong>: decide which proposals show as eligible on the <a href="#/review/admin/scores">Scores</a> tab and in the <a href="#/review/admin/funding">Funding planner</a>.</li>
+  <li><strong>"Split" SD</strong>: how much disagreement on one criterion gets flagged.</li>
+  <li><strong>Colleges / schools</strong>: the list used in dropdowns across the portal.</li>
+  <li><strong>Rubric</strong>: edit wording, weights or bonus points. Totals recalculate everywhere, including reviews already submitted, so avoid changing weights mid-review.</li>
+  <li><strong>Grants Management password</strong>: the second lock on the management side.</li></ul>`)}
     <div class="grid2">
       <div class="card pad stack">
         <h3>Review window</h3>

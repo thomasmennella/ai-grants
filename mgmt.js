@@ -37,6 +37,16 @@ const dshort = d => {
   return isNaN(dt) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: dt.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
 };
 const tierChip = t => P.tierChip(t);
+const help = (id, title, body, cls) => P.help(id, title, body, cls);
+const TEMPLATE = 'templates/assessment-data-template.xlsx';
+const tplLink = label => `<a href="${TEMPLATE}" download>${label || 'assessment data template (.xlsx)'}</a>`;
+const ASM_HOWTO = () => `
+  <ol><li><strong>Send awardees the ${tplLink()}.</strong> They fill in one sheet per domain they measure (anonymous student codes, pre and post scores), and its Summary sheet calculates n, mean and SD. Domain 1 is required for everyone.</li>
+  <li>When it comes back, open the award and click <strong>Import from template</strong> in its <em>Pre/post assessment</em> card, then choose the file. The portal reads every Domain sheet, calculates n, mean and SD for pre and post, and shows a preview with any problems (wrong project code, missing maximum score, out-of-range scores).</li>
+  <li>Click <strong>Import</strong>. One row per domain is filled in, or updated if that domain already has a row, and the spreadsheet is attached as the data file.</li>
+  <li>Data that didn't come on the template? Click <strong>+ Domain row</strong> and type the numbers: <strong>Instrument</strong>, <strong>Max</strong> (the highest possible score, e.g. 4 on a 0–4 rubric), then n, mean and SD for pre and post.</li></ol>
+  <p>Once Domain 1 has both pre and post means, the award's "Pre/post assessment" condition turns green.</p>`;
+
 const byCode = (a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }) || String(a.title).localeCompare(String(b.title));
 
 // ---------------------------------------------------------------- settings
@@ -340,6 +350,14 @@ function vDashboard() {
   if (sum(as, a => a.award_total) > cap()) attention.push(`Total awarded (${money(sum(as, a => a.award_total))}) is over the ${money(cap())} cap`);
   const planned = sum(as, a => a.students_planned), reached = sum(as, a => a.students_reached);
   const inner = `
+    ${help('mg-dashboard', 'How to read this page', `
+      <p>The <strong>conditions grid</strong> has one row per active award and one column per RFP §7 condition. Only the lead's participation is tracked.</p>
+      <ul><li><span class="ck ok">✓</span> met · <span class="ck part">1/3</span> done / needed · <span class="ck waived">waived</span> · <span class="cell-none">·</span> not required (CoP and Ambassador are encouraged, not required, for micro-grants).</li>
+      <li><strong>Training, Talks, CoP</strong> come from attendance ticks on <a href="#/manage/sessions">Sessions &amp; dates</a>.</li>
+      <li><strong>Pre/post</strong> comes from the Domain 1 numbers entered on each award's page (see <a href="#/manage/assessment">Assessment</a>).</li>
+      <li><strong>Surveys</strong> come from completion ticks on <a href="#/manage/surveys">Surveys &amp; testimonials</a>.</li>
+      <li><strong>Report, Repository, Ambassador</strong> come from deliverables and tick boxes on each award's page.</li></ul>
+      <p><strong>Click a row</strong> to open that award. When every required condition is met it shows <em>Ready for stipend</em>; then mark its stipend Approved on <a href="#/manage/budget">Budget</a>. <strong>Needs attention</strong> lists gaps such as a missing lead, budget lines that don't add up, overspending, sessions with no attendance recorded and overdue milestones. <strong>Email reminders…</strong> drafts a message to every lead still missing a condition.</p>`)}
     <div class="kpis">
       <div class="kpi hl"><div class="v num">${as.length}</div><div class="l">Active awards · ${as.filter(a => a.tier === 'micro').length} micro, ${as.filter(a => a.tier === 'midi').length} midi</div></div>
       <div class="kpi"><div class="v num">${money(sum(as, a => a.award_total))}</div><div class="l">Awarded of ${money(cap())}</div><div class="bar"><i style="width:${Math.min(100, Math.round(100 * sum(as, a => a.award_total) / (cap() || 1)))}%"></i></div></div>
@@ -376,6 +394,12 @@ function vAwardees() {
   const list = awards();
   const cand = importCandidates();
   const inner = `
+    ${help('mg-awardees', 'How to add awardees', `
+      <ol><li>Record each decision in the review side's <a href="#/review/admin/funding">Funding planner</a> (Fund in full, Fund partially or Fund as micro-grant).</li>
+      <li>Click <strong>Import funded proposals</strong>. Each becomes an award with its tier, college and award amount, plus one stipend budget line for the full amount (split it later if needed).</li>
+      <li><strong>Open each award and add the lead</strong> (and any co-leads) from the proposal's cover sheet. The review portal never had their names. The lead becomes the payee on the stipend line.</li>
+      <li>Fill in the course details and the domains targeted. These feed the reports.</li></ol>
+      <p><strong>Add award manually</strong> is for anything that didn't go through the Funding planner. To withdraw an award, set its <em>Status</em> to Withdrawn on its page; it drops out of counts and totals but keeps its record.</p>`)}
     <div class="row between" style="margin-bottom:12px">
       <div class="row"><button class="btn primary" data-a="import">Import funded proposals${cand.length ? ` (${cand.length} new)` : ''}</button><button class="btn" data-a="add">Add award manually</button></div>
       <div class="row"><button class="btn sm" data-mact="remind">Email reminders…</button><button class="btn sm" data-a="csv">Roster CSV</button></div></div>
@@ -509,6 +533,11 @@ function vAward(id) {
     </tbody></table></div>` : '<p class="muted small">No sessions yet.</p>'}</div>`;
 
   const budget = `<div class="card pad"><div class="row between"><h3 class="ch">Budget & spending</h3><div class="row"><button class="btn sm" data-a="addline">+ Budget line</button><button class="btn sm" data-a="addexp">+ Expense</button></div></div>
+    ${help('mg-award-budget', 'How budget lines, expenses and stipends work', `
+      <ul><li><strong>Budget lines</strong> are the plan: what the award may be spent on. They should add up to the award total (shown in red when they don't). An imported award starts with one stipend line for the whole amount; change it, or add lines from the proposal's budget.</li>
+      <li><strong>Expenses</strong> are actual non-stipend purchases (software, materials, a speaker). Record each with <strong>+ Expense</strong> and attach the receipt. Stipends are not expenses; they go through payroll.</li>
+      <li><strong>Stipend status</strong>: Pending → Approved (conditions met, you sign off) → Sent to payroll → Paid. Stipends are released in early summer 2027, once the conditions are met. You'll be asked to confirm if you approve one early.</li>
+      <li><strong>Payee</strong> links a stipend line to a person, so co-leads can be paid separately.</li></ul>`, 'inline')}
     <div class="row small" style="gap:18px;margin-bottom:10px"><span>Award <strong class="num">${money(a.award_total)}</strong></span><span>Budgeted <strong class="num" style="${Math.abs(F.budgeted - num(a.award_total, 0)) > 0.5 ? 'color:var(--bad)' : ''}">${money(F.budgeted)}</strong></span>
       <span>Stipends <strong class="num">${money(F.stipend)}</strong> (${money(F.stipPaid)} paid)</span><span>Non-stipend <strong class="num">${money(F.spent)}</strong> spent of ${money(F.nonBudget)}</span></div>
     ${lines.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Category</th><th>Description</th><th class="r">Amount</th><th>Payee (stipend)</th><th>Stipend status</th><th>Status date</th><th></th></tr></thead><tbody>
@@ -527,7 +556,8 @@ function vAward(id) {
         <td class="r"><button class="btn sm ghost" data-del="expenses|${x.id}" title="Delete">✕</button></td></tr>`).join('')}</tbody></table></div>` : ''}
   </div>`;
 
-  const assessment = `<div class="card pad"><div class="row between"><h3 class="ch">Pre/post assessment</h3><button class="btn sm" data-a="addasm">+ Domain row</button></div>
+  const assessment = `<div class="card pad"><div class="row between"><h3 class="ch">Pre/post assessment</h3><div class="row"><button class="btn sm primary" data-a="impasm">Import from template</button><button class="btn sm" data-a="addasm">+ Domain row</button><a class="btn sm ghost" href="${TEMPLATE}" download>Blank template</a></div></div>
+    ${help('mg-award-asm', 'How to enter assessment data', ASM_HOWTO(), 'inline')}
     ${asm.length ? `<div class="tbl-wrap"><table class="tbl asm"><thead><tr><th>Domain</th><th>Instrument</th><th class="c">Max</th><th class="c">n pre</th><th class="c">Mean pre</th><th class="c">SD pre</th><th class="c">n post</th><th class="c">Mean post</th><th class="c">SD post</th><th class="c">Gain</th><th>Data file</th><th></th></tr></thead><tbody>
       ${asm.map(r => `<tr><td>${sel('assessments', r, 'domain', [1, 2, 3, 4, 5, 6].map(d => [d, d + '. ' + DOMAINS[d]]), { k: 'int', rr: 1, w: '185px' })}</td><td>${inp('assessments', r, 'instrument', { w: '140px' })}</td>
         ${['scale_max', 'n_pre', 'mean_pre', 'sd_pre', 'n_post', 'mean_post', 'sd_post'].map(f => `<td>${inp('assessments', r, f, { k: f.startsWith('n_') ? 'int' : 'num', rr: 1, w: '70px' })}</td>`).join('')}
@@ -539,6 +569,8 @@ function vAward(id) {
 
   const deliverables = `<div class="card pad"><div class="row between"><h3 class="ch">Deliverables</h3>
       <div class="row"><select class="input sm" id="dlKind" style="width:auto">${Object.entries(DELIV).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select><button class="btn sm" data-a="dlfile">Upload file</button><button class="btn sm" data-a="dllink">Add link</button></div></div>
+    ${help('mg-award-deliv', 'How deliverables work', `
+      <p>Pick the type in the dropdown, then <strong>Upload file</strong> or <strong>Add link</strong> (e.g., a OneDrive or repository link). A <strong>final report</strong> plus a <strong>revised syllabus</strong> or <strong>assignment</strong> completes the "Final report" condition. Files are private to the coordinator.</p>`, 'inline')}
     ${dl.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Type</th><th>File / link</th><th>Received</th><th>Notes</th><th></th></tr></thead><tbody>
       ${dl.map(x => `<tr><td>${sel('deliverables', x, 'kind', Object.entries(DELIV), { rr: 1 })}</td>
         <td class="small">${x.file_path ? fileLink(x.file_path, x.file_name) : ''}${x.url ? `${x.file_path ? ' · ' : ''}<a href="${esc(x.url)}" target="_blank" rel="noopener">link ↗</a>` : ''}</td>
@@ -557,7 +589,14 @@ function vAward(id) {
 
   const danger = `<div class="row noprint" style="justify-content:flex-end;margin-top:16px"><button class="btn sm danger" data-a="delaward">Delete this award</button></div>`;
 
-  P.app.innerHTML = shell('awardees', header + `<div class="stack">${conditions}${details}${people}${attendance}${budget}${assessment}${deliverables}<div class="grid2">${surveys}${testimonials}</div></div>` + danger);
+  const pageHelp = help('mg-award', 'How this page works', `
+      <ul><li><strong>Conditions of award</strong> update themselves from the rest of the portal; the "Tracked from" column says where each one comes from. Tick <em>Repository</em> and <em>Ambassador</em> here when they are done. <strong>Waive…</strong> marks a condition met, with a reason for the record.</li>
+      <li><strong>Award details</strong>: students planned and reached, course and domains feed the dashboard and impact report. Edits save when you leave a field.</li>
+      <li><strong>People</strong>: the lead is the person whose participation is tracked.</li>
+      <li><strong>Sessions</strong>: the same attendance ticks as on <a href="#/manage/sessions">Sessions &amp; dates</a>, for this award only.</li>
+      <li><strong>Budget &amp; spending</strong>, <strong>Pre/post assessment</strong> and <strong>Deliverables</strong> each have their own guide below.</li>
+      <li><strong>Surveys</strong> and <strong>Testimonials</strong>: quick completion ticks and quotes for this award. The full lists are on <a href="#/manage/surveys">Surveys &amp; testimonials</a>.</li></ul>`);
+  P.app.innerHTML = shell('awardees', header + pageHelp + `<div class="stack">${conditions}${details}${people}${attendance}${budget}${assessment}${deliverables}<div class="grid2">${surveys}${testimonials}</div></div>` + danger);
   bindAward(a);
 }
 function stipSelect(l, a) {
@@ -604,9 +643,105 @@ async function delRow(spec) {
   const row = M.d[t].find(r => r.id === id);
   const ok = await call(async () => { await P.S.api.mDelete('mgmt_' + t, { id }); return true; });
   if (!ok) return;
-  if (row && row.file_path) P.S.api.mRemove(row.file_path).catch(() => {});
+  if (row && row.file_path && !fileInUse(row.file_path, row.id)) P.S.api.mRemove(row.file_path).catch(() => {});
   M.loaded = false; await load(); rerender();
 }
+const fileInUse = (path, exceptId) => [].concat(M.d.expenses, M.d.assessments, M.d.deliverables).some(r => r.file_path === path && r.id !== exceptId);
+
+// ---- Import from the assessment data template (.xlsx) ----
+let xlsxLoading = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!xlsxLoading) xlsxLoading = new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = () => resolve(window.XLSX);
+    sc.onerror = () => { xlsxLoading = null; reject(new Error('Could not load the spreadsheet reader from cdnjs.cloudflare.com. Check your connection and try again.')); };
+    document.head.appendChild(sc);
+  });
+  return xlsxLoading;
+}
+function describe(arr) {
+  const n = arr.length;
+  if (!n) return { n: 0, mean: null, sd: null };
+  const m = arr.reduce((x, y) => x + y, 0) / n;
+  return { n, mean: m, sd: n > 1 ? Math.sqrt(arr.reduce((x, y) => x + (y - m) * (y - m), 0) / (n - 1)) : null };
+}
+const r3 = v => (v == null || isNaN(v)) ? null : Math.round(v * 1000) / 1000;
+// Reads the raw scores on each "Domain N" sheet (not the Summary's cached formulas, which some apps don't save).
+function parseTemplate(XLSX, buf) {
+  const wb = XLSX.read(buf, { type: 'array' });
+  const cell = (ws, ref) => { const c = ws && ws[ref]; return c ? c.v : undefined; };
+  const asNum = v => typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v)) ? Number(v) : null);
+  const sm = wb.Sheets.Summary;
+  const code = sm ? String(cell(sm, 'B3') ?? '').trim() : '';
+  const rows = [];
+  wb.SheetNames.forEach(name => {
+    const m = name.match(/^\s*Domain\s*([1-6])\b/i); if (!m) return;
+    const ws = wb.Sheets[name];
+    const last = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']).e.r + 1 : 0;
+    const pre = [], post = []; let both = 0, bad = 0;
+    for (let r = 7; r <= last; r++) {
+      const a = cell(ws, 'B' + r), b = cell(ws, 'C' + r), x = asNum(a), y = asNum(b);
+      if (a !== undefined && a !== '' && x === null) bad++;
+      if (b !== undefined && b !== '' && y === null) bad++;
+      if (x !== null) pre.push(x); if (y !== null) post.push(y); if (x !== null && y !== null) both++;
+    }
+    if (!pre.length && !post.length) return;
+    const max = asNum(cell(ws, 'B4'));
+    rows.push({ domain: Number(m[1]), instrument: String(cell(ws, 'B3') ?? '').trim(), scale_max: max, pre: describe(pre), post: describe(post), both, bad,
+      over: max ? pre.concat(post).filter(v => v < 0 || v > max).length : pre.concat(post).filter(v => v < 0).length });
+  });
+  return { code, rows: rows.sort((x, y) => x.domain - y.domain) };
+}
+async function importTemplate(a) {
+  const file = await pickFile('.xlsx,.xls,.xlsm');
+  if (!file) return;
+  let XLSX, parsed;
+  try { XLSX = await loadXLSX(); } catch (e) { return P.toast(e.message, 'bad'); }
+  try { parsed = parseTemplate(XLSX, await file.arrayBuffer()); } catch (e) { return P.toast('Could not read that file: ' + e.message, 'bad'); }
+  if (!parsed.rows.length) {
+    return P.modal({ title: 'No scores found', ok: 'OK', cancel: null,
+      body: `<p style="margin-top:0">${esc(file.name)} has no scores on sheets named "Domain 1" to "Domain 6". The importer reads the ${tplLink('assessment data template')}: pre scores in column B and post scores in column C, from row 7 down.</p>` });
+  }
+  const mine = M.d.assessments.filter(r => r.award_id === a.id);
+  const norm = x => String(x || '').replace(/\s+/g, '').toUpperCase();
+  const warn = [];
+  if (parsed.code && a.code && norm(parsed.code) !== norm(a.code)) warn.push(`The file says project <strong>${esc(parsed.code)}</strong>, but this award is <strong>${esc(a.code)}</strong>. Check that it's the right file.`);
+  if (!parsed.rows.some(r => r.domain === 1)) warn.push('No Domain 1 scores were found. Domain 1 is required for every award.');
+  parsed.rows.forEach(r => {
+    if (!r.scale_max) warn.push(`Domain ${r.domain}: no maximum possible score (cell B4). Add one after importing so it can be pooled on the Assessment tab.`);
+    if (r.over) warn.push(`Domain ${r.domain}: ${r.over} score${r.over === 1 ? ' is' : 's are'} below 0 or above the maximum.`);
+    if (r.bad) warn.push(`Domain ${r.domain}: ${r.bad} non-numeric entr${r.bad === 1 ? 'y was' : 'ies were'} skipped.`);
+  });
+  const trip = s => s.n ? `${s.n} · ${f2(s.mean)} · ${s.sd == null ? '—' : f2(s.sd)}` : '—';
+  P.modal({
+    title: 'Import assessment data: ' + (a.code || a.title), wide: true, ok: 'Import',
+    body: `<p class="small muted" style="margin-top:0">From <strong>${esc(file.name)}</strong>. Pre and post columns show n · mean · SD.</p>
+      ${warn.length ? `<div class="notice" style="margin-bottom:10px"><ul style="margin:0;padding-left:18px">${warn.map(w => `<li>${w}</li>`).join('')}</ul></div>` : ''}
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Domain</th><th>Instrument</th><th class="c">Max</th><th class="c">Pre</th><th class="c">Post</th><th class="c" title="Students with both a pre and a post score">Both</th><th>Will</th></tr></thead><tbody>
+      ${parsed.rows.map(r => `<tr><td class="small">${r.domain}. ${esc(DOMAINS[r.domain])}</td><td class="small">${esc(r.instrument) || '<span class="muted">—</span>'}</td><td class="c num">${r.scale_max ?? '—'}</td>
+        <td class="c num small">${trip(r.pre)}</td><td class="c num small">${trip(r.post)}</td><td class="c num">${r.both}</td>
+        <td class="small">${mine.some(x => Number(x.domain) === r.domain) ? '<span class="badge b-warn">update row</span>' : '<span class="badge b-ok">add row</span>'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <label class="check" style="margin-top:12px"><input type="checkbox" class="cbx" id="impAttach" checked> Attach this spreadsheet as the data file</label>`,
+    onOk: async bg => {
+      const path = $('#impAttach', bg).checked ? await P.S.api.mUpload(file) : null;
+      for (const r of parsed.rows) {
+        const cur = mine.find(x => Number(x.domain) === r.domain);
+        const patch = { n_pre: r.pre.n || null, mean_pre: r3(r.pre.mean), sd_pre: r3(r.pre.sd), n_post: r.post.n || null, mean_post: r3(r.post.mean), sd_post: r3(r.post.sd) };
+        if (r.instrument || !cur) patch.instrument = r.instrument;
+        if (r.scale_max != null || !cur) patch.scale_max = r.scale_max;
+        if (path) { patch.file_path = path; patch.file_name = file.name; }
+        if (cur) put('mgmt_assessments', await P.S.api.mUpdate('mgmt_assessments', cur.id, patch));
+        else put('mgmt_assessments', await P.S.api.mInsert('mgmt_assessments', Object.assign({ award_id: a.id, domain: r.domain }, patch)));
+      }
+      P.toast(`Imported ${parsed.rows.length} domain${parsed.rows.length === 1 ? '' : 's'}`, 'ok');
+      rerender();
+    }
+  });
+}
+
 function pickFile(accept) {
   return new Promise(resolve => {
     const f = document.createElement('input'); f.type = 'file'; if (accept) f.accept = accept;
@@ -656,6 +791,7 @@ function bindAward(a) {
     }
     if (act === 'addline') { const l = await call(() => P.S.api.mInsert('mgmt_budget_lines', { award_id: a.id, category: 'materials', description: '', amount: 0 })); if (l) { put('mgmt_budget_lines', l); rerender(); } }
     if (act === 'addexp') return expenseModal(a.id);
+    if (act === 'impasm') return importTemplate(a);
     if (act === 'addasm') {
       const used = M.d.assessments.filter(r => r.award_id === a.id).map(r => Number(r.domain));
       const next = [1].concat((a.domains || []).map(Number)).find(d => !used.includes(d)) || 1;
@@ -740,6 +876,13 @@ function vSessions() {
   const shortBy = Math.max(0, Math.ceil((need - slots) / talksPer()));
   const ms = M.d.milestones.slice().sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999') || a.sort - b.sort);
   const inner = `
+    ${help('mg-sessions', 'How sessions and attendance work', `
+      <ul><li><strong>Sessions</strong> were set up from the RFP: the Nov 20 convening, AI Trainings 1–3 and enough Lunch Lightning Talk sessions for your roster. Fill in dates, times and rooms; dated sessions appear under "Coming up" on the <a href="#/manage/dashboard">Dashboard</a>. Add more with the buttons (e.g., a watch party).</li>
+      <li><strong>CoP</strong>: tick it for sessions that count toward the Community of Practice requirement (five events for midi-grants). Convening, Lightning Talk and watch-party sessions are ticked by default.</li>
+      <li><strong>Attendance grid</strong>: tick the lead's box for each session they attend. On Lightning Talk sessions, also tick <strong>talk</strong> for whoever presented; that counts toward their talk requirement (one for micro, two for midi) and marks them attended.</li>
+      <li>The Lightning Talks note at the top tells you whether you have enough sessions for everyone's talks (five per hour by default; change it in <a href="#/manage/settings">Settings</a>).</li>
+      <li><strong>Milestones</strong> follow the RFP timeline. Set the dates as you fix them and tick each one when it's done; overdue ones appear under "Needs attention".</li>
+      <li>Deleting a session also deletes its attendance records.</li></ul>`)}
     <div class="row between" style="margin-bottom:10px"><h3>Sessions</h3>
       <div class="row">${Object.entries(KINDS).map(([k, l]) => `<button class="btn sm" data-add="${k}">+ ${esc(l)}</button>`).join('')}</div></div>
     ${need ? `<div class="notice ${shortBy ? '' : 'info'}" style="margin-bottom:12px">Lightning Talks: your roster needs <strong>${need}</strong> talks (one per micro, two per midi). ${M.d.sessions.filter(s => s.kind === 'lightning').length} session(s) × ${talksPer()} talks = ${slots} slots.
@@ -793,6 +936,11 @@ function vBudget() {
   const totals = { award: sum(as, a => a.award_total), budget: sum(F, x => x.f.budgeted), stip: sum(F, x => x.f.stipend), paid: sum(F, x => x.f.stipPaid), non: sum(F, x => x.f.nonBudget), spent: sum(F, x => x.f.spent) };
   const pipeline = STIP.map(([k, l]) => [l, sum(stipLines.filter(x => x.stipend_status === k), x => x.amount), stipLines.filter(x => x.stipend_status === k).length]);
   const inner = `
+    ${help('mg-budget', 'How the Budget tab works', `
+      <ul><li><strong>Stipend pipeline</strong>: every stipend line across all awards. Change its status as it moves: Pending → Approved → Sent to payroll → Paid. The date fills in automatically and can be edited. The Conditions column shows whether the award is ready.</li>
+      <li><strong>By award</strong>: award vs. budgeted vs. spent. Shaded cells flag budget lines that don't add up to the award, or spending over the non-stipend budget. Click a row to fix it on the award's page.</li>
+      <li><strong>Expense log</strong>: every non-stipend purchase. <strong>+ Record expense</strong> asks which award and budget line it belongs to; attach the receipt now or later.</li>
+      <li>The $35,000 cap comes from the review side's <a href="#/review/admin/settings">Settings</a>.</li></ul>`)}
     <div class="kpis">
       <div class="kpi"><div class="v num">${money(cap())}</div><div class="l">Funds this cycle</div></div>
       <div class="kpi hl"><div class="v num">${money(totals.award)}</div><div class="l">Awarded · ${money(cap() - totals.award)} unallocated</div></div>
@@ -842,6 +990,15 @@ function vAssessment() {
   const missingD1 = as.filter(a => !M.d.assessments.some(r => r.award_id === a.id && Number(r.domain) === 1 && r.mean_pre != null && r.mean_post != null));
   const rows = M.d.assessments.filter(r => as.some(a => a.id === r.award_id)).sort((x, y) => byCode(award(x.award_id), award(y.award_id)) || x.domain - y.domain);
   const inner = `
+    <div class="notice info row between" style="margin-bottom:12px"><span>Awardees report results on the ${tplLink('assessment data template')}: one sheet per domain, with a Summary sheet that matches the fields below.</span><a class="btn sm" href="${TEMPLATE}" download>Download template (.xlsx)</a></div>
+    ${help('mg-assess-enter', 'How to enter assessment data', ASM_HOWTO())}
+    ${help('mg-assess-read', 'What these numbers mean', `
+      <p>This tab only displays results; data is entered on each award's page. Every mean is converted to a percentage of its instrument's maximum, so different instruments can be combined, and projects are averaged within each domain, weighted by number of students.</p>
+      <ul><li><strong>Pre / Post</strong>: the pooled mean as % of the maximum. Example: a 0–4 rubric with a pre mean of 2.0 and a post mean of 3.1 is 50% → 77.5%.</li>
+      <li><strong>Change</strong>: post minus pre in percentage points (+27.5 in the example).</li>
+      <li><strong>Normalized gain</strong>: the share of possible improvement achieved, (post − pre) ÷ (100 − pre); 27.5 ÷ 50 = 0.55. It is fairer than raw change when classes start at different levels.</li>
+      <li><strong>Effect size d</strong>: the change in means divided by the pooled standard deviation, averaged across projects. It appears only when SDs are entered. As a rough guide, 0.2 is small, 0.5 medium and 0.8 or more large.</li></ul>
+      <p><strong>Caveats.</strong> Domain 1 pools cleanly because everyone uses the common rubric. Other domains use project-specific instruments, so treat their pooled figures as descriptive. Pre and post groups can include different students; the template's "students with both scores" column shows how many are matched.</p>`)}
     <div class="card pad" style="margin-bottom:16px"><h3 class="ch">Pre vs. post by domain</h3>${gainsChart(S)}</div>
     <div class="tbl-wrap" style="margin-bottom:8px"><table class="tbl"><thead><tr><th>Domain</th><th class="c">Projects</th><th class="c">Students (post n)</th><th class="c">Pre</th><th class="c">Post</th><th class="c">Change</th><th class="c" title="Hake normalized gain: (post − pre) / (100 − pre)">Normalized gain</th><th class="c" title="Cohen's d from pooled SDs, n-weighted across projects">Effect size d</th></tr></thead><tbody>
       ${[1, 2, 3, 4, 5, 6].map(d => { const s = S[d]; return `<tr ${s ? '' : 'class="below"'}><td>${d}. ${esc(DOMAINS[d])}</td><td class="c num">${s ? s.projects : 0}</td><td class="c num">${s ? s.students : '—'}</td>
@@ -869,6 +1026,11 @@ function vSurveys() {
   const as = active();
   const tst = M.d.testimonials.slice().sort((a, b) => (b.featured - a.featured) || String(b.created_at).localeCompare(String(a.created_at)));
   const inner = `
+    ${help('mg-surveys', 'How surveys and testimonials work', `
+      <ul><li><strong>Surveys</strong> run outside the portal (e.g., Microsoft Forms). Add each one here with its link and due date; "Final initiative survey" was added from the RFP.</li>
+      <li><strong>Completion</strong>: tick an award's box when its lead's response arrives (check the form's response list). The date is recorded, and the award's "Surveys" condition updates. <strong>Email reminders…</strong> on the <a href="#/manage/dashboard">Dashboard</a> can chase anyone who hasn't responded.</li>
+      <li><strong>Testimonials</strong>: paste standout quotes from survey responses or reports. Attribute students generically (e.g., "First-year student, gateway biology course"), never by name.</li>
+      <li><strong>★ Featured</strong> quotes appear in the printable impact report and are offered to the AI narrative on <a href="#/manage/reports">Reports</a>.</li></ul>`)}
     <div class="row between" style="margin-bottom:10px"><h3>Surveys</h3><button class="btn sm" data-a="addsv">+ Survey</button></div>
     ${sv.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Survey</th><th>Due</th><th>Link (Forms etc.)</th><th class="c">Completed</th><th></th></tr></thead><tbody>
       ${sv.map(s => `<tr><td>${inp('surveys', s, 'name', { w: '100%', rr: 1 })}</td><td>${inp('surveys', s, 'due_date', { k: 'date', rr: 1 })}</td><td>${inp('surveys', s, 'link', { ph: 'https://forms…' })}${s.link ? ` <a class="small" href="${esc(s.link)}" target="_blank" rel="noopener">open ↗</a>` : ''}</td>
@@ -955,6 +1117,11 @@ function vReports() {
   const key = ls.get(KEY_STORE);
   const draft = ls.get(NARR_STORE);
   const inner = `
+    ${help('mg-reports', 'How reporting works', `
+      <ul><li><strong>Impact report</strong>: opens a print-ready page with headline numbers, student gains, every project, participation, funds and featured quotes. Click <strong>Print / save as PDF</strong> and choose "Save as PDF" in the print dialog.</li>
+      <li><strong>Donor narrative</strong> (optional): Claude drafts the narrative from the portal's numbers. It needs your Anthropic API key: create one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com → API keys</a>, then paste it into <a href="#/manage/settings">Settings</a>. Each draft uses a small amount of API credit on your Anthropic account. Only aggregate numbers, project titles and featured quotes are sent, never names or emails. Edit the draft here; it is kept in this browser and included in the impact report.</li>
+      <li><strong>CSV exports</strong>: spreadsheets for the Provost's Office or your own analysis.</li></ul>
+      <p>Check every number in a draft against the <a href="#/manage/dashboard">Dashboard</a> before sending it.</p>`)}
     <div class="grid2">
       <div class="card pad stack"><h3>Printable impact report</h3>
         <p class="small muted" style="margin:0">Headline numbers, every project, conditions completed, pre/post gains by domain, budget, featured testimonials, and your narrative (if drafted). Print it or save it as a PDF from your browser.</p>
@@ -1058,6 +1225,12 @@ function vReport() {
 function vSettings() {
   const key = ls.get(KEY_STORE);
   const inner = `
+    ${help('mg-settings', 'What these settings do', `
+      <ul><li><strong>Cycle name</strong> and <strong>donor</strong> appear on the impact report and in the AI narrative.</li>
+      <li><strong>Trainings required</strong> and <strong>CoP events required</strong> set how many attended sessions complete those conditions. <strong>Talks per session</strong> is used to plan Lightning Talk sessions.</li>
+      <li><strong>API key</strong>: stored only in this browser. On another computer, enter it again there.</li>
+      <li><strong>Management password</strong>: the second lock on this side. Unlocks last 12 hours; click <strong>Lock</strong> (top right) when you step away.</li>
+      <li>The budget cap and the list of colleges are shared with the review side's <a href="#/review/admin/settings">Settings</a>.</li></ul>`)}
     <div class="grid2">
       <div class="card pad stack"><h3>Cycle & requirements</h3>
         <div><label class="f">Cycle name</label><input class="input" data-set="mgmt_cycle" value="${esc(cycle())}"></div>

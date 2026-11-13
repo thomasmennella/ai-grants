@@ -268,6 +268,21 @@ ul.warnlist li:before{content:'⚠';color:var(--warn);margin-right:6px}
 @media (max-width:720px){ .fgrid{grid-template-columns:1fr}.fgrid .span2,.fgrid .span3{grid-column:auto} }
 @media print{ .report .kpis{grid-template-columns:repeat(4,1fr)} .rsec{page-break-inside:avoid} }
 
+
+/* ---------- help guides ---------- */
+details.help{border:1px solid #cdd9ee;background:var(--navy-soft);border-radius:var(--radius);margin:0 0 16px;font-size:13.5px}
+details.help summary{cursor:pointer;padding:9px 14px;font-weight:600;color:var(--navy);list-style:none;display:flex;align-items:center;gap:9px}
+details.help summary::-webkit-details-marker{display:none}
+details.help summary:after{content:'Show';margin-left:auto;font-weight:500;font-size:12px;color:var(--navy-2);text-decoration:underline}
+details.help[open] summary:after{content:'Hide'}
+.help-i{width:18px;height:18px;border-radius:50%;background:var(--navy);color:#fff;display:inline-grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+.help-body{padding:0 16px 12px 41px;color:var(--ink-2);line-height:1.55}
+.help-body ol,.help-body ul{margin:4px 0 6px;padding-left:18px}
+.help-body li{margin:4px 0}
+.help-body p{margin:6px 0}
+details.help.inline{margin:6px 0 12px;font-size:13px}
+.rub-body details.help{margin-bottom:12px}
+
 @media (max-width: 980px){
   .score-shell{grid-template-columns:1fr;grid-template-rows:auto;height:auto;overflow:visible}
   .rub-body{overflow:visible}
